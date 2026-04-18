@@ -42,34 +42,72 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  build:
-    name: Build uYouPlus
+
+  # ────────────────────────────────────────────────
+  # Stage 1 – Checkout & Environment
+  # ────────────────────────────────────────────────
+  setup:
+    name: "Stage 1 · Setup Environment"
     runs-on: macos-latest
     permissions:
       contents: write
+    outputs:
+      youtube_version: ${{ steps.prepare_youtube.outputs.youtube_version }}
+      package: ${{ steps.build_package.outputs.package }}
 
     steps:
-      - name: Checkout Main
+      - name: Checkout uYouPlus repo
         uses: actions/checkout@v4.2.1
         with:
           path: main
           submodules: recursive
 
-      - name: Caching brew dependencies
+      - name: Cache brew dependencies
         id: brew_cache
         uses: tecolicom/actions-use-homebrew-tools@v1.2
         with:
           tools: ldid dpkg make
           cache: yes
 
-      - name: Install Dependencies
+      - name: Install brew dependencies
         if: steps.brew_cache.outputs.cache-hit != 'true'
         run: brew install ldid dpkg make
 
-      - name: Set PATH environment variable
+      - name: Add GNU make to PATH
         run: echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
 
-      - name: Setup Theos
+  # ────────────────────────────────────────────────
+  # Stage 2 – Theos Build System
+  # ────────────────────────────────────────────────
+  theos:
+    name: "Stage 2 · Setup Theos"
+    needs: setup
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout uYouPlus repo
+        uses: actions/checkout@v4.2.1
+        with:
+          path: main
+          submodules: recursive
+
+      - name: Cache brew dependencies
+        id: brew_cache
+        uses: tecolicom/actions-use-homebrew-tools@v1.2
+        with:
+          tools: ldid dpkg make
+          cache: yes
+
+      - name: Install brew dependencies
+        if: steps.brew_cache.outputs.cache-hit != 'true'
+        run: brew install ldid dpkg make
+
+      - name: Add GNU make to PATH
+        run: echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
+
+      - name: Checkout Theos
         uses: actions/checkout@v4.2.1
         with:
           repository: theos/theos
@@ -77,7 +115,7 @@ jobs:
           path: theos
           submodules: recursive
 
-      - name: Caching SDK
+      - name: Cache iOS 16.5 SDK
         id: SDK
         uses: actions/cache@v4
         env:
@@ -96,7 +134,7 @@ jobs:
         env:
           THEOS: ${{ github.workspace }}/theos
 
-      - name: Setup Theos Jailed
+      - name: Checkout Theos Jailed
         uses: actions/checkout@v4.2.1
         with:
           repository: qnblackcat/theos-jailed
@@ -105,27 +143,98 @@ jobs:
           submodules: recursive
 
       - name: Install Theos Jailed
-        run: |
-          ./theos-jailed/install
+        run: ./theos-jailed/install
         env:
           THEOS: ${{ github.workspace }}/theos
 
-      - name: Prepare YouTube iPA
+      - name: Cache Theos workspace
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            theos
+            theos-jailed
+          key: theos-${{ github.run_id }}
+
+  # ────────────────────────────────────────────────
+  # Stage 3 – Download & Patch YouTube IPA
+  # ────────────────────────────────────────────────
+  prepare_ipa:
+    name: "Stage 3 · Prepare YouTube IPA"
+    needs: theos
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    outputs:
+      youtube_version: ${{ steps.prepare_youtube.outputs.youtube_version }}
+
+    steps:
+      - name: Checkout uYouPlus repo
+        uses: actions/checkout@v4.2.1
+        with:
+          path: main
+          submodules: recursive
+
+      - name: Restore Theos workspace
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            theos
+            theos-jailed
+          key: theos-${{ github.run_id }}
+
+      - name: Download YouTube IPA
+        run: wget "$YOUTUBE_URL" --no-verbose -O main/YouTube.ipa
+        env:
+          YOUTUBE_URL: ${{ inputs.decrypted_youtube_url }}
+
+      - name: Extract and detect YouTube version
         id: prepare_youtube
         run: |
-          wget "$YOUTUBE_URL" --no-verbose -O main/YouTube.ipa
           cd ${{ github.workspace }}/main
           mv YouTube.ipa YouTube.zip
           unzip -q YouTube.zip
           youtube_version=$(defaults read "$(pwd)/Payload/YouTube.app/Info" CFBundleVersion)
-          echo "==> YouTube v$youtube_version downloaded!"
+          echo "==> YouTube v$youtube_version"
           sed -i '' "17s#.*#YOUTUBE_VERSION = ${youtube_version}#g" Makefile
           echo "youtube_version=${youtube_version}" >> $GITHUB_OUTPUT
-        env:
-          THEOS: ${{ github.workspace }}/theos
-          YOUTUBE_URL: ${{ inputs.decrypted_youtube_url }}
 
-      - name: Fix compiling & Build Package
+      - name: Cache IPA workspace
+        uses: actions/cache/save@v4
+        with:
+          path: main
+          key: ipa-${{ github.run_id }}
+
+  # ────────────────────────────────────────────────
+  # Stage 4 – Build uYouPlus Package
+  # ────────────────────────────────────────────────
+  build:
+    name: "Stage 4 · Build uYouPlus"
+    needs: prepare_ipa
+    runs-on: macos-latest
+    permissions:
+      contents: write
+    outputs:
+      package: ${{ steps.build_package.outputs.package }}
+
+    steps:
+      - name: Restore Theos workspace
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            theos
+            theos-jailed
+          key: theos-${{ github.run_id }}
+
+      - name: Restore IPA workspace
+        uses: actions/cache/restore@v4
+        with:
+          path: main
+          key: ipa-${{ github.run_id }}
+
+      - name: Add GNU make to PATH
+        run: echo "$(brew --prefix make)/libexec/gnubin" >> $GITHUB_PATH
+
+      - name: Build package
         id: build_package
         run: |
           mkdir -p theos/lib/iphone/rootless
@@ -133,7 +242,7 @@ jobs:
           sed -i '' "27s#.*#BUNDLE_ID = ${{ env.BUNDLE_ID }}#g" Makefile
           sed -i '' "26s#.*#DISPLAY_NAME = ${{ env.APP_NAME }}#g" Makefile
           make package THEOS_PACKAGE_SCHEME=rootless IPA=Payload/YouTube.app FINALPACKAGE=1
-          echo "package=$(ls -t packages | head -n1)" >>$GITHUB_OUTPUT
+          echo "package=$(ls -t packages | head -n1)" >> $GITHUB_OUTPUT
           echo -e "==> \033[1mSHASUM256: $(shasum -a 256 packages/*.ipa | cut -f1 -d' ')\033[0m"
           echo -e "==> \033[1mBundle ID: ${{ env.BUNDLE_ID }}\033[0m"
         env:
@@ -142,24 +251,46 @@ jobs:
           BUNDLE_ID: ${{ inputs.bundle_id }}
           APP_NAME: ${{ inputs.app_name }}
 
-      - name: Upload Artifact
+      - name: Cache build output
+        uses: actions/cache/save@v4
+        with:
+          path: main/packages
+          key: packages-${{ github.run_id }}
+
+  # ────────────────────────────────────────────────
+  # Stage 5 – Publish
+  # ────────────────────────────────────────────────
+  publish:
+    name: "Stage 5 · Publish Release"
+    needs: [prepare_ipa, build]
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Restore build output
+        uses: actions/cache/restore@v4
+        with:
+          path: main/packages
+          key: packages-${{ github.run_id }}
+
+      - name: Upload artifact
         if: ${{ inputs.upload_artifact }}
         uses: actions/upload-artifact@v4
         env:
           UYOU_VERSION: ${{ inputs.uyou_version }}
-          YOUTUBE_VERSION: ${{ steps.prepare_youtube.outputs.youtube_version }}
+          YOUTUBE_VERSION: ${{ needs.prepare_ipa.outputs.youtube_version }}
         with:
           name: uYouPlus_${{ env.YOUTUBE_VERSION }}_${{ env.UYOU_VERSION }}
-          path: ${{ github.workspace }}/main/packages/${{ steps.build_package.outputs.package }}
+          path: main/packages/${{ needs.build.outputs.package }}
           if-no-files-found: error
 
-      - name: Create Release
-        id: create_release
+      - name: Create GitHub release
         uses: qnblackcat/action-gh-release@master
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           UYOU_VERSION: ${{ inputs.uyou_version }}
-          YOUTUBE_VERSION: ${{ steps.prepare_youtube.outputs.youtube_version }}
+          YOUTUBE_VERSION: ${{ needs.prepare_ipa.outputs.youtube_version }}
           DRAFT: ${{ inputs.create_release }}
         with:
           tag_name: v${{ env.YOUTUBE_VERSION }}-${{ env.UYOU_VERSION }}-(${{ github.run_number }})
