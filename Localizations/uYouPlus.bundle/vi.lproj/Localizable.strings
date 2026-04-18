@@ -7,12 +7,6 @@
 "REPORT_AN_ISSUE" = "Báo lỗi";
 "ADD_TITLE" = "Thêm tiêu đề lỗi ở đây...";
 
-"COPY_SETTINGS" = "Copy settings";
-"COPY_SETTINGS_DESC" = "Copy all current settings to the clipboard";
-"PASTE_SETTINGS" = "Paste settings";
-"PASTE_SETTINGS_DESC" = "Paste settings from clipboard and apply";
-"PASTE_SETTINGS_ALERT" = "Are you sure you want to paste the settings?";
-
 "QUIT_YOUTUBE" = "Đóng YouTube";
 
 "RESTART_YOUTUBE" = "Khởi động lại YouTube để áp dụng các thay đổi";
@@ -65,9 +59,6 @@
 
 "STOCK_VOLUME_HUD" = "Sử dụng thanh âm lượng mặc định của iOS";
 "STOCK_VOLUME_HUD_DESC" = "";
-
-"REPLACE_YT_DOWNLOAD_WITH_UYOU" = "Replace YouTube's download with uYou's";
-"REPLACE_YT_DOWNLOAD_WITH_UYOU_DESC" = "";
 
 // Video controls overlay options
 "VIDEO_CONTROLS_OVERLAY_OPTIONS" = "📹 Tùy chọn hiển thị trong trình phát video";
@@ -153,6 +144,3 @@
 
 "FIX_GOOGLE_SIGNIN" = "Sửa lỗi không thể đăng nhập tài khoản Google";
 "FIX_GOOGLE_SIGNIN_DESC" = "Chỉ bật tính năng này khi bạn không thể đăng nhập tài khoản Google và ứng dụng được cài qua TrollStore. Nếu bạn có thể đăng nhập bình thường thì hãy tắt tính năng này. Cần khởi động lại ứng dụng.";
-
-"GOOGLE_SIGNIN_FIX" = "Google sign-in fix";
-"GOOGLE_SIGNIN_FIX_DESC" = "";
