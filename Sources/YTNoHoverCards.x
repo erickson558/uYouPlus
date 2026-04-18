@@ -3,7 +3,7 @@
 // YTNoHoverCards: https://github.com/level3tjg/YTNoHoverCards
 %hook YTCreatorEndscreenView
 - (void)setHidden:(BOOL)hidden {
-    if (IS_ENABLED(kHideHoverCards))
+    if (IS_ENABLED(@"hideHoverCards_enabled"))
         hidden = YES;
     %orig;
 }
